@@ -17,5 +17,13 @@
 (defn generate-payload [o]
   (java.nio.ByteBuffer/wrap (.getBytes (generate-string o) "UTF-8")))
 
+
+(def scenario
+  {:name "Ping scenario"
+   :requests [{:name "Ping" :http "http://clj-gatling-demo-server.herokuapp.com/ping"}]})
+
 ;(parse-result (lambda/invoke creds :function-name "clojider-development-lambda"
-;                             :payload (generate-payload {:trolo "polo"})))
+;                             :payload (generate-payload {:scenarios [scenario]
+;                                                         :users 10
+;                                                         :options {:requests 1000}})))
+
