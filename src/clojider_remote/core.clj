@@ -14,7 +14,7 @@
       (.array)
       (java.io.ByteArrayInputStream.)
       (io/reader)
-      (parse-stream)))
+      (parse-stream true)))
 
 (defn generate-payload [o]
   (java.nio.ByteBuffer/wrap (.getBytes (generate-string o) "UTF-8")))
@@ -30,13 +30,21 @@
   (io/copy (:object-content (s3/get-object creds bucket object-key))
            (io/file (str results-dir "/" object-key))))
 
-;(do
-;  (create-dir "tmp/input")
-;  (download-file "tmp/input" "clojider-results" "simulation0.log")
-;  (chart/create-chart "tmp"))
+(defn create-chart [results]
+  (create-dir "tmp/input")
+  (println "Downloading" results)
+  (doseq [result results]
+    (download-file "tmp/input" "clojider-results" result))
+  (chart/create-chart "tmp"))
 
-;(parse-result (lambda/invoke creds :function-name "clojider-development-lambda"
-;                             :payload (generate-payload {:scenarios [scenario]
-;                                                         :users 10
-;                                                         :options {:requests 100}})))
+(defn run-simulation [scenario users requests]
+  (let [result (parse-result (lambda/invoke (assoc creds :client-config {:socket-timeout (* 5 60 1000)})
+                                            :function-name "clojider-development-lambda"
+                                            :payload (generate-string {:scenarios [scenario]
+                                                                       :users users
+                                                                       :options {:requests requests}})))]
+    (println "Got results" result)
+    (create-chart (:results result))))
 
+
+;(run-simulation scenario 100 100000)
