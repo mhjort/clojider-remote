@@ -1,8 +1,13 @@
 (ns clojider-remote.core
  (:require [clojure.edn :as edn]
            [clojure.java.io :as io]
+           [clojure.string :refer [split]]
+           [clj-time.core :as t]
+           [clj-time.format :as f]
            [clj-gatling.chart :as chart]
            [cheshire.core :refer [generate-string parse-stream]]
+           [clj-gatling.simulation-util :refer [split-to-number-of-buckets]]
+           [clojure.core.async :refer [thread <!!]]
            [amazonica.aws.s3 :as s3]
            [amazonica.aws.lambda :as lambda]))
 
@@ -28,23 +33,39 @@
 
 (defn download-file [results-dir bucket object-key]
   (io/copy (:object-content (s3/get-object creds bucket object-key))
-           (io/file (str results-dir "/" object-key))))
+           (io/file (str results-dir "/" (last (split object-key #"/"))))))
 
-(defn create-chart [results]
-  (create-dir "tmp/input")
-  (println "Downloading" results)
-  (doseq [result results]
-    (download-file "tmp/input" "clojider-results" result))
-  (chart/create-chart "tmp"))
+(defn- generate-folder-name []
+  (let [custom-formatter (f/formatter "yyyyMMddHHmmssSSS")]
+    (f/unparse custom-formatter (t/now))))
 
-(defn run-simulation [scenario users requests]
-  (let [result (parse-result (lambda/invoke (assoc creds :client-config {:socket-timeout (* 5 60 1000)})
-                                            :function-name "clojider-development-lambda"
-                                            :payload (generate-string {:scenarios [scenario]
-                                                                       :users users
-                                                                       :options {:requests requests}})))]
-    (println "Got results" result)
-    (create-chart (:results result))))
+(defn create-chart [results bucket-name folder-name]
+  (let [input-dir (str "tmp/" folder-name "/input")]
+    (create-dir input-dir)
+    (println "Downloading" results "from" bucket-name)
+    (doseq [result results]
+      (download-file input-dir bucket-name result))
+    (chart/create-chart (str "tmp/" folder-name))))
 
+(defn invoke-lambda [node-id scenario users lambda-function-name folder-name options]
+  (println "Invoking Lambda for" node-id)
+  (parse-result (lambda/invoke (assoc creds :client-config {:socket-timeout (* 6 60 1000)})
+                               :function-name lambda-function-name
+                               :payload (generate-string {:scenarios [scenario]
+                                                          :users users
+                                                          :options (-> options
+                                                                       (update :duration t/in-millis)
+                                                                       (assoc :folder-name folder-name
+                                                                               :node-id node-id))}))))
 
-;(run-simulation scenario 100 100000)
+(defn run-simulation [node-count scenario concurrency lambda-function-name options]
+  (let [splitted-users (split-to-number-of-buckets (range concurrency) node-count)
+        folder-name (generate-folder-name)
+        result-channels (mapv #(thread (invoke-lambda %1 scenario %2 lambda-function-name folder-name options))
+                              (range)
+                              splitted-users)
+        all-results (mapcat :results (map <!! result-channels))]
+    (println "Got results" all-results)
+    (create-chart all-results (:bucket-name options) folder-name)))
+
+;(run-simulation scenario 100 "clojider-development-lambda" "clojider-results" 100000)
