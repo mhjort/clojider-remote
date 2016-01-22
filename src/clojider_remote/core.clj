@@ -47,11 +47,11 @@
       (download-file input-dir bucket-name result))
     (chart/create-chart (str "tmp/" folder-name))))
 
-(defn invoke-lambda [node-id scenario users lambda-function-name folder-name options]
+(defn invoke-lambda [node-id scenarios users lambda-function-name folder-name options]
   (println "Invoking Lambda for" node-id)
   (parse-result (lambda/invoke (assoc creds :client-config {:socket-timeout (* 6 60 1000)})
                                :function-name lambda-function-name
-                               :payload (generate-string {:scenarios [scenario]
+                               :payload (generate-string {:scenarios scenarios
                                                           :users users
                                                           :options (-> options
                                                                        (update :duration t/in-millis)
