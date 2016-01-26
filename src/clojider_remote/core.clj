@@ -47,21 +47,21 @@
       (download-file input-dir bucket-name result))
     (chart/create-chart (str "tmp/" folder-name))))
 
-(defn invoke-lambda [node-id scenarios users lambda-function-name folder-name options]
+(defn invoke-lambda [node-id simulation users lambda-function-name folder-name options]
   (println "Invoking Lambda for" node-id)
   (parse-result (lambda/invoke (assoc creds :client-config {:socket-timeout (* 6 60 1000)})
                                :function-name lambda-function-name
-                               :payload (generate-string {:scenarios scenarios
+                               :payload (generate-string {:simulation simulation
                                                           :users users
                                                           :options (-> options
                                                                        (update :duration t/in-millis)
                                                                        (assoc :folder-name folder-name
                                                                                :node-id node-id))}))))
 
-(defn run-simulation [node-count scenario concurrency lambda-function-name options]
+(defn run-simulation [node-count simulation concurrency lambda-function-name options]
   (let [splitted-users (split-to-number-of-buckets (range concurrency) node-count)
         folder-name (generate-folder-name)
-        result-channels (mapv #(thread (invoke-lambda %1 scenario %2 lambda-function-name folder-name options))
+        result-channels (mapv #(thread (invoke-lambda %1 simulation %2 lambda-function-name folder-name options))
                               (range)
                               splitted-users)
         all-results (mapcat :results (map <!! result-channels))]
